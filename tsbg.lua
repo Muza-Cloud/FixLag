@@ -1,19 +1,20 @@
 -- | made by m7za | --
 
--- | services | --
+-- | Services | --
 local Players    = game:GetService("Players")
 local Lighting   = game:GetService("Lighting")
 local Workspace  = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
+local Debris     = game:GetService("Debris")
 
 local LocalPlayer = Players.LocalPlayer
 
--- | engine & graphics | --
+-- | Engine & Graphics | --
 pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
 pcall(function() settings().Network.IncomingReplicationLag = 0 end)
 pcall(function() settings().Physics.PhysicsEnvironmentalThrottle = Enum.EnviromentalPhysicsThrottle.Throttle30Hz end)
 
--- | skybox & lighting | --
+-- | Skybox & Lighting | --
 local SKY_IDS = {
     Bk = "rbxassetid://92959017845968", Ft = "rbxassetid://129304841254693",
     Lf = "rbxassetid://129249062260004", Rt = "rbxassetid://117319232583147",
@@ -46,7 +47,7 @@ local function cleanLightingChild(v)
         elseif v:IsA("Atmosphere") then
             v.Density, v.Haze, v.Glare = 0, 0, 0
         elseif v:IsA("Sky") and v ~= sky then
-            v:Destroy()
+            Debris:AddItem(v, 0)
         end
     end)
 end
@@ -54,36 +55,66 @@ end
 for _, v in ipairs(Lighting:GetChildren()) do cleanLightingChild(v) end
 Lighting.ChildAdded:Connect(cleanLightingChild)
 
--- | thrown & debris | --
+local function safeRemove(instance)
+    if not instance or not instance:IsDescendantOf(game) then return end
+    pcall(function()
+        -- | Make parts invisible | --
+        if instance:IsA("BasePart") then
+            instance.Transparency = 1
+            instance.CanCollide = false
+            instance.CanTouch = false
+            instance.CanQuery = false
+            instance.CastShadow = false
+        elseif instance:IsA("Model") then
+            for _, p in ipairs(instance:GetDescendants()) do
+                if p:IsA("BasePart") then
+                    p.Transparency = 1
+                    p.CanCollide = false
+                    p.CanTouch = false
+                    p.CanQuery = false
+                    p.CastShadow = false
+                elseif p:IsA("Decal") or p:IsA("Texture") then
+                    p.Transparency = 1
+                elseif p:IsA("ParticleEmitter") or p:IsA("Smoke") or p:IsA("Sparkles") or p:IsA("Fire") or p:IsA("Clouds") then
+                    p.Enabled = false
+                end
+            end
+        end
+        -- | Safely destroy Debris | --
+        Debris:AddItem(instance, 0.1)
+    end)
+end
+
+-- | Thrown & Debris Cleaner | --
 local function clearThrownFolder()
     local thrown = Workspace:FindFirstChild("Thrown")
     if thrown then
         for _, child in ipairs(thrown:GetChildren()) do
-            pcall(function() child:Destroy() end)
+            safeRemove(child)
         end
         thrown.ChildAdded:Connect(function(child)
-            task.defer(function()
-                pcall(function() child:Destroy() end)
+            task.delay(0.1, function()
+                safeRemove(child)
             end)
         end)
     end
 end
 clearThrownFolder()
 
--- | tree cleanUp | --
+-- | Tree Cleaner | --
 local function clearTrees()
     task.spawn(function()
         local map = Workspace:WaitForChild("Map", 5) or Workspace:FindFirstChild("Map")
         if map then
             for _, child in ipairs(map:GetChildren()) do
                 if child.Name:lower():find("tree") then
-                    pcall(function() child:Destroy() end)
+                    safeRemove(child)
                 end
             end
             map.ChildAdded:Connect(function(child)
                 if child.Name:lower():find("tree") then
-                    task.defer(function()
-                        pcall(function() child:Destroy() end)
+                    task.delay(0.1, function()
+                        safeRemove(child)
                     end)
                 end
             end)
@@ -92,7 +123,7 @@ local function clearTrees()
 end
 clearTrees()
 
--- | world object optimization | --
+-- | World Object Optimization | --
 local function optimizeObject(v)
     if not v or not v.Parent or not v:IsDescendantOf(game) then return end
 
@@ -100,25 +131,25 @@ local function optimizeObject(v)
         local parent = v.Parent
         if not parent then return end
 
-        -- | remove trees | --
+        -- | Handle Trees | --
         if parent.Name == "Map" and v.Name:lower():find("tree") then
-            v:Destroy()
+            safeRemove(v)
             return
         end
 
-        -- | skip sub-objects | --
+        -- | Skip sub - objects | --
         local thrown = Workspace:FindFirstChild("Thrown")
         if (thrown and v:IsDescendantOf(thrown)) or parent.Name:lower():find("tree") then
             return
         end
 
-        -- | remove debris | --
+        -- | Handle Debris | --
         if v.Name:lower():find("debris") then
-            v:Destroy()
+            safeRemove(v)
             return
         end
 
-        -- | basepart optimization | --
+        -- | BasePart Optimization | --
         if v:IsA("BasePart") then
             v.CastShadow = false
             local char = LocalPlayer.Character
@@ -129,7 +160,7 @@ local function optimizeObject(v)
         elseif v:IsA("Decal") or v:IsA("Texture") then
             v.Transparency = 1
         elseif v:IsA("SurfaceAppearance") then
-            v:Destroy()
+            safeRemove(v)
         elseif v:IsA("ParticleEmitter") or v:IsA("Smoke") or v:IsA("Sparkles") or v:IsA("Fire") or v:IsA("Clouds") then
             v.Enabled = false
         end
@@ -145,12 +176,12 @@ task.spawn(function()
 end)
 
 Workspace.DescendantAdded:Connect(function(v)
-    task.defer(function()
+    task.delay(0.05, function()
         optimizeObject(v)
     end)
 end)
 
--- | character effects cleanUp | --
+-- | Character Effects Cleanup | --
 local function applyCharacterEffects(char)
     if not char then return end
     local function hideEffect(v)
@@ -162,17 +193,17 @@ local function applyCharacterEffects(char)
     end
     for _, v in ipairs(char:GetDescendants()) do hideEffect(v) end
     char.DescendantAdded:Connect(function(v)
-        task.defer(function() hideEffect(v) end)
+        task.delay(0.05, function() hideEffect(v) end)
     end)
 end
 
 if LocalPlayer.Character then applyCharacterEffects(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(applyCharacterEffects)
 
--- | fps & ping | --
+-- | FPS & Ping | --
 local playerGui = LocalPlayer:WaitForChild("PlayerGui")
 if playerGui:FindFirstChild("FPSPingCounter") then 
-    pcall(function() playerGui.FPSPingCounter:Destroy() end)
+    pcall(function() safeRemove(playerGui.FPSPingCounter) end)
 end
 
 local screenGui = Instance.new("ScreenGui", playerGui)
@@ -201,7 +232,7 @@ RunService.RenderStepped:Connect(function()
     label.TextColor3 = Color3.fromHSV((now * 0.4) % 1, 0.8, 1)
 end)
 
--- | disable camera shake | --
+-- | Disable Camera Shake | --
 if getrawmetatable and setreadonly then
     pcall(function()
         local meta = getrawmetatable(game)
