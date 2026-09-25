@@ -1,3 +1,4 @@
+-- | made by m7za | --
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
